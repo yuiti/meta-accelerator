@@ -1,5 +1,10 @@
 jQuery(document).ready(function () {
 
+	if(jQuery('#tabs').size() != 0) {
+		jQuery('#tabs').tabs();
+	}
+
+
 	jQuery(".btn_delete").on("click", function() {
 
 		if(window.confirm("delete realy?") == false) {
@@ -25,8 +30,8 @@ jQuery(document).ready(function () {
 			},
 			error: function(xhr, status, err) {
         // append error
-				alert("error: " + xhr.responseText);
-				location.reload();
+				alert(xhr.responseText);
+				location.href = location.href + "#tabs-2";
 				}
 		});
 
@@ -85,6 +90,14 @@ jQuery(document).ready(function () {
 				}
 		});
 	});
+
+
+	jQuery('.btn_showdetail').on('click', function() {
+
+		jQuery('.tbl_detail_' + jQuery(this).attr('target')).toggle();
+
+		return false;
+	})
 
 });
 

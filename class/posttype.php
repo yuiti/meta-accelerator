@@ -67,7 +67,7 @@ class Posttype {
 	static public function is_accelerated($post_type) {
 		$target_posttypes = \get_option("meta-accelerator_posttypes");
 		//echo $target_posttypes[$post_type];
-		if($target_posttypes[$post_type]) {
+		if(isset( $target_posttypes[$post_type] ) ) {
 			//echo "true";
 			return true;
 		} else {
@@ -179,8 +179,12 @@ class Posttype {
 
 					$array_metas = \get_post_custom(get_the_ID());
 					foreach($array_metas as $meta_key => $array_meta) {
-						if(Posttype::update_meta_table_data($meta_key, $array_meta, $post_type, get_the_ID()) == false) {
-							throw new \Exception("update_meta_table_data error: " . $meta_key . ":" . print_r($array_meta, true) . " : post_type: " . $post_type . " : post_id: " . get_the_ID());
+						if(\get_option('meta-accelerator_no_underval') == 'no_underval' && 0 === strpos($meta_key, '_')) {
+							// 何もしない
+						} else {
+							if(Posttype::update_meta_table_data($meta_key, $array_meta, $post_type, get_the_ID()) == false) {
+								throw new \Exception("update_meta_table_data error: " . $meta_key . ":" . print_r($array_meta, true) . " : post_type: " . $post_type . " : post_id: " . get_the_ID());
+							}
 						}
 					}
 				}
@@ -200,7 +204,7 @@ class Posttype {
 	 * @param string $post_type
 	 */
 	function update_meta_table_data($key, $val, $post_type, $post_id = "") {
-		meta_accelerator_log("update_meta_table_data $post_id $key " . print_r($val, true));
+		//meta_accelerator_log("update_meta_table_data $post_id $key " . print_r($val, true));
 		//meta_accelerator_log("update_meta_table_data: " . $key . ":" . print_r($val, true) . " : post_type: " . $post_type);
 		try {
 			global $wpdb;
@@ -441,7 +445,7 @@ class Posttype {
 	 *
 	 * @param $key
 	 */
-	function get_col_name($key, $post_type = "") {
+	function get_col_name($key, $post_type = "", $is_null = false) {
 		if($post_type == "") {
 			$post_type = $this->post_type;
 		}
@@ -450,12 +454,29 @@ class Posttype {
 			// すでにある
 			//$this->add_col($key, "col_" . $this->array_cols[$post_type][$key], $post_type);
 		} elseif($this->array_cols[$post_type]){
+
+			if($is_null) {
+				// 列がない
+				return '';
+			}
+			if(\get_option('meta-accelerator_no_underval') == 'no_underval' && 0 === strpos($key, '_')) {
+				// 何もしない
+				return '';
+			}
 			// キーを生成して処理
 			$this->array_cols_cnt[$post_type]++;
 			$this->array_cols[$post_type][$key] = $this->array_cols_cnt[$post_type];
 			$this->add_col($key, "col_" . $this->array_cols[$post_type][$key], $post_type);
 			$this->save_options();
 		} else {
+			if($is_null) {
+				// 列がない
+				return '';
+			}
+			if(\get_option('meta-accelerator_no_underval') == 'no_underval' && 0 === strpos($key, '_')) {
+				// 何もしない
+				return '';
+			}
 			// キーを生成して処理
 			$this->array_cols_cnt[$post_type] = 1;
 			$this->array_cols[$post_type] = array();

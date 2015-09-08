@@ -2,7 +2,7 @@
 /*
 Plugin Name: Meta Accelerator
 Description: meta query speed up accelerator
-Version: 0.6.6
+Version: 0.7
 Plugin URI: http://www.eyeta.jp/archives/1012
 Author: Eyeta Co.,Ltd.
 Author URI: http://www.eyeta.jp/
@@ -167,7 +167,13 @@ class meta_accelerator {
 	function deleted_post_meta($meta_ids, $object_id, $meta_key, $_meta_value) {
 		// post_type確認
 		$post = get_post($object_id);
+
+
 		if(Posttype::is_accelerated($post->post_type)) {
+			if(\get_option('meta-accelerator_no_underval') == 'no_underval' && 0 === strpos($meta_key, '_')) {
+				// 何もしない
+				return;
+			}
 			// 高速化対象
 			$postmeta = get_post_meta($object_id, $meta_key);
 			$posttype = Posttype::get_instance($post->post_type);
@@ -187,6 +193,10 @@ class meta_accelerator {
 		// post_type確認
 		$post = get_post($object_id);
 		if(Posttype::is_accelerated($post->post_type)) {
+			if(\get_option('meta-accelerator_no_underval') == 'no_underval' && 0 === strpos($meta_key, '_')) {
+				// 何もしない
+				return;
+			}
 			// 高速化対象
 			$postmeta = get_post_meta($object_id, $meta_key);
 			$posttype = Posttype::get_instance($post->post_type);
@@ -207,6 +217,10 @@ class meta_accelerator {
 		$post = get_post($object_id);
 		meta_accelerator_log("updated_post_meta $meta_key $_meta_value");
 		if(Posttype::is_accelerated($post->post_type)) {
+			if(\get_option('meta-accelerator_no_underval') == 'no_underval' && 0 === strpos($meta_key, '_')) {
+				// 何もしない
+				return;
+			}
 			// 高速化対象
 			$postmeta = get_post_meta($object_id, $meta_key);
 			$posttype = Posttype::get_instance($post->post_type);
@@ -222,17 +236,27 @@ class meta_accelerator {
 	 */
 	function posts_orderby( $orderby, $context) {
 		global $wpdb;
-		meta_accelerator_log("order by : $orderby : $this->_orderkey : $this->_query_posttype");
+		//meta_accelerator_log("order by : $orderby : $this->_orderkey : $this->_query_posttype");
 		$meta_clauses = $context->meta_query->get_clauses();
 		if ( ! empty( $meta_clauses ) ) {
 			$primary_meta_query = reset( $meta_clauses );
-			if(strpos($orderby, "$wpdb->postmeta.meta_value") !== false) {
-				// メタ並替え有り
-				$obj_posttype = Posttype::get_instance($this->_query_posttype);
-				$orderby = str_replace("$wpdb->postmeta.meta_value", $obj_posttype->get_tablename($this->_query_posttype) . "." . $obj_posttype->get_col_name($primary_meta_query['key']), $orderby);
+			if(is_array($orderby)) {
+				foreach($orderby as $key => $aorderby) {
+					if(strpos($aorderby, "$wpdb->postmeta.meta_value") !== false) {
+						// メタ並替え有り
+						$obj_posttype = Posttype::get_instance($this->_query_posttype);
+						$orderby[$key] = str_replace("$wpdb->postmeta.meta_value", $obj_posttype->get_tablename($this->_query_posttype) . "." . $obj_posttype->get_col_name($primary_meta_query['key']), $orderby);
+					}
+				}
+			} else {
+				if(strpos($orderby, "$wpdb->postmeta.meta_value") !== false) {
+					// メタ並替え有り
+					$obj_posttype = Posttype::get_instance($this->_query_posttype);
+					$orderby = str_replace("$wpdb->postmeta.meta_value", $obj_posttype->get_tablename($this->_query_posttype) . "." . $obj_posttype->get_col_name($primary_meta_query['key']), $orderby);
+				}
 			}
+			//meta_accelerator_log("order by 2 : $orderby: " . print_r($meta_clauses, true));
 		}
-		meta_accelerator_log("order by 2 : $orderby");
 
 		return $orderby;
 	}
@@ -250,8 +274,8 @@ class meta_accelerator {
 	function get_meta_sql($array_join_where, $queries, $type, $primary_table, $primary_id_column, $context) {
 		meta_accelerator_log("get_meta_sql");//return $array_join_where;
 
-		$this->_orderkey = "";
-		$this->_query_posttype = "";
+		$meta_clauses = $context->meta_query->get_clauses();
+		meta_accelerator_log("get_meta_sql 2 : meta_clauses: " . print_r($meta_clauses, true));
 
 		global $wpdb;
 		//  array( compact( 'join', 'where' ), $this->queries, $type, $primary_table, $primary_id_column, $context )
@@ -333,8 +357,8 @@ class meta_accelerator {
 		$join = $array_join_where["join"];
 		$where = $array_join_where["where"];
 
-		meta_accelerator_log("get_meta_sql : queries: " . print_r($queries, true));
-		meta_accelerator_log("get_meta_sql : type: " . print_r($type, true));
+		//meta_accelerator_log("get_meta_sql : queries: " . print_r($queries, true));
+		//meta_accelerator_log("get_meta_sql : type: " . print_r($type, true));
 
 		$array_join_1 = explode( "\n", $join );
 		$array_join = array();
@@ -364,8 +388,8 @@ class meta_accelerator {
 			}
 		}
 		$array_where = explode( "\n", $where );
-		meta_accelerator_log("get_meta_sql : join: " . print_r($array_join, true));
-		meta_accelerator_log("get_meta_sql : where: " . print_r($array_where, true));
+		//meta_accelerator_log("get_meta_sql : join: " . print_r($array_join, true));
+		//meta_accelerator_log("get_meta_sql : where: " . print_r($array_where, true));
 
 		// joinを整理
 		$array_replace_aliases = array();
@@ -374,26 +398,27 @@ class meta_accelerator {
 			// INNER JOIN wp_postmeta AS ? の場合?を抽出してこのレコードを消す
 			if(strpos($current_join, "INNER JOIN $wpdb->postmeta AS") !== false) {
 				// postmetaテーブルのJOIN
-				$len = strpos($current_join, " ON ") - strlen("INNER JOIN $wpdb->postmeta AS ");
-				$array_replace_aliases[substr($current_join, strlen("INNER JOIN $wpdb->postmeta AS "), $len)] = "inner";
+				//$len = strpos($current_join, " ON ") - strlen("INNER JOIN $wpdb->postmeta AS ");
+				//$array_replace_aliases[substr($current_join, strlen("INNER JOIN $wpdb->postmeta AS "), $len)] = "inner";
 				unset($array_join[$key]);
 			} elseif(strpos($current_join, "INNER JOIN $wpdb->postmeta") !== false) {
 					// postmetaテーブルのJOIN
-					$array_replace_aliases[$wpdb->postmeta] = "inner";
+					//
+					//$array_replace_aliases[$wpdb->postmeta] = "inner";
 					unset($array_join[$key]);
 			} elseif(strpos($current_join, "LEFT JOIN $wpdb->postmeta AS") !== false) {
-				$len = strpos($current_join, " ON ") - strlen("LEFT JOIN $wpdb->postmeta AS ");
-				$array_replace_aliases[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] = "left";
-				$str_tmp = substr($current_join, 0, strrpos($current_join, "'"));
-				$str_tmp = substr($str_tmp, strrpos($str_tmp, "'")+1);
-				$array_left_key[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] =$str_tmp;
+				//$len = strpos($current_join, " ON ") - strlen("LEFT JOIN $wpdb->postmeta AS ");
+				//$array_replace_aliases[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] = "left";
+				//$str_tmp = substr($current_join, 0, strrpos($current_join, "'"));
+				//$str_tmp = substr($str_tmp, strrpos($str_tmp, "'")+1);
+				//$array_left_key[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] =$str_tmp;
 				unset($array_join[$key]);
 			} elseif(strpos($current_join, "LEFT JOIN $wpdb->postmeta") !== false) {
-				$len = strpos($current_join, " ON ") - strlen("LEFT JOIN $wpdb->postmeta AS ");
-				$array_replace_aliases[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] = "left";
-				$str_tmp = substr($current_join, 0, strrpos($current_join, "'"));
-				$str_tmp = substr($str_tmp, strrpos($str_tmp, "'")+1);
-				$array_left_key[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] =$str_tmp;
+				//$len = strpos($current_join, " ON ") - strlen("LEFT JOIN $wpdb->postmeta AS ");
+				//$array_replace_aliases[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] = "left";
+				//$str_tmp = substr($current_join, 0, strrpos($current_join, "'"));
+				//$str_tmp = substr($str_tmp, strrpos($str_tmp, "'")+1);
+				//$array_left_key[substr($current_join, strlen("LEFT JOIN $wpdb->postmeta AS "), $len)] =$str_tmp;
 				unset($array_join[$key]);
 			}
 		}
@@ -401,54 +426,58 @@ class meta_accelerator {
 		meta_accelerator_log('left_key' . print_r($array_left_key, true));
 
 		// joinを追加
-		$array_join[] = "INNER JOIN " . $obj_posttype->get_tablename($post_type) . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
+		$array_lefts = array();
+		$array_inner = array();
+		foreach($meta_clauses as $join_key => $clause) {
+			if('NOT EXISTS' == $clause['compare']) {
+				$array_lefts[] = $join_key;
+			} else {
+				$array_inner[] = $join_key;
+			}
+		}
+		if(array() != $array_inner) {
+			$array_join[] = "INNER JOIN " . $obj_posttype->get_tablename($post_type) . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
+		}
+		foreach($array_lefts as $join_key) {
+			$array_join[] = "LEFT JOIN " . $obj_posttype->get_tablename($post_type) . " as " . $join_key . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
+		}
+		//meta_accelerator_log("get_meta_sql : array_inner: " . print_r($array_inner, true));
 
 		// whereを整理
 		foreach($array_where as $key => $current_where) {
-			foreach($array_replace_aliases as $alias_key => $jointype) {
-				if(mb_strpos($current_where, $alias_key . ".") !== false) {
-					if(mb_strpos($current_where, $alias_key . ".meta_key") !== false) {
-						// .meta_key = ?? の下りを削除する　　mt1.meta_key = 'pref' AND
-						$pos_keystart = mb_strpos($current_where, ".meta_key = '") + mb_strlen(".meta_key = '");
-						$pos_and = mb_strpos($current_where, "' AND");
-						$meta_key = mb_substr($current_where, $pos_keystart, $pos_and - $pos_keystart);
-						$array_where[$key] = mb_ereg_replace($alias_key . "\.meta_key = '" . $meta_key . "' AND" , "", $array_where[$key]);
+			foreach($array_inner as $join_key) {
+				//meta_accelerator_log("get_meta_sql : join_key: $join_key / current_where: $current_where");
+				if(mb_strpos($current_where, $join_key . ".meta_key") !== false) {
+					//meta_accelerator_log("get_meta_sql : $join_key" . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "' AND");
+					$array_where[$key] = mb_ereg_replace($join_key . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "'" , " 1=1 ", $array_where[$key]);
+					//meta_accelerator_log("get_meta_sql : $array_where[$key]");
+				}
+				if(mb_strpos($current_where, $join_key . ".meta_value") !== false) {
+					$array_where[$key] = mb_ereg_replace($join_key . ".meta_value" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_clauses[$join_key]['key']), $array_where[$key]);
+				}
+			}
 
-					// 対象有り
-					$array_where[$key] = mb_ereg_replace($alias_key . "\.meta_value", $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_key), $array_where[$key]);
-						if($wpdb->postmeta == $alias_key) {
-							$this->_orderkey = $meta_key;
-						}
-					} elseif(mb_strpos($current_where, $alias_key . ".post_id IS NULL") !== false) {
-						// $array_left_key
-						$array_where[$key] = mb_ereg_replace($alias_key . "\.post_id IS NULL" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($array_left_key[$alias_key]) . " IS NULL", $array_where[$key]);
+			foreach($array_lefts as $join_key) {
+				if(mb_strpos($current_where, $join_key . ".meta_key") !== false) {
+					$array_where[$key] = mb_ereg_replace($join_key . "\.meta_key = '" . $meta_clauses[$join_key]['key'] . "'" , " 1=1 ", $array_where[$key]);
+				}
+				if(mb_strpos($current_where, $join_key . ".meta_value") !== false) {
+					$array_where[$key] = mb_ereg_replace($join_key . "\.meta_value" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_clauses[$join_key]['key']), $array_where[$key]);
+				}
+				if(mb_strpos($current_where, $join_key . ".post_id IS NULL") !== false) {
+					if( ( $col_name = $obj_posttype->get_col_name($meta_clauses[$join_key]['key'], '', true) ) != '' ) {
+						$array_where[$key] = mb_ereg_replace($join_key . "\.post_id IS NULL" , $obj_posttype->get_tablename($post_type) . "." . $col_name . " IS NULL", $array_where[$key]);
+					} else {
+						// 列が登録されていないということは全投稿でこのフィールドは空
 					}
 				}
 			}
+
 		}
-		meta_accelerator_log("get_meta_sql : array_where: " . print_r($array_where, true));
+		//meta_accelerator_log("get_meta_sql : array_where: " . print_r($array_where, true));
 
-		// 				$where["key-only-$key"] = $wpdb->prepare( "$meta_table.meta_key = %s", trim( $q['key'] ) );
-		// key-only
-		foreach($array_where as $key => $current_where) {
-			if(strpos($current_where, "$wpdb->postmeta.meta_key") !== false) {
-				// キーオンリークエリ
-				//$str_tmp = substr($current_where, 0, strrpos($current_where, "'"));
-				//$str_tmp = substr($str_tmp, strrpos($str_tmp, "'")+1);
-				$str_tmp = substr($current_where, strpos($current_where, "'")+1);
-				$str_tmp = substr($str_tmp, 0, strpos($str_tmp, "'"));
-
-				$this->_orderkey = $str_tmp;
-				if(strpos($current_where, "AND") !== false) {
-					$array_where[$key] = "AND ( 1=1 ";
-				} else {
-					$array_where[$key] = " 1=1 ";
-				}
-			}
-		}
-
-		meta_accelerator_log("A" . print_r($array_join, true));
-		meta_accelerator_log(print_r($array_where, true));
+		//meta_accelerator_log("A" . print_r($array_join, true));
+		//meta_accelerator_log(print_r($array_where, true));
 
 		$join = implode( "\n", $array_join );
 		$where = implode( "\n", $array_where );
@@ -516,8 +545,8 @@ class meta_accelerator {
 	function admin_menu () {
 		// RAINS処理関連ページ
 		require_once "meta_accelerator_admin.php";
-		add_menu_page(\__('meta speedup'), \__('meta speedup'), '10', 'meta_accelerator_admin.php', array(&$this, 'meta_accelerator_admin'));
 
+		add_submenu_page( 'options-general.php', \__('meta speedup'), \__('meta speedup'), 10, 'meta_accelerator_admin.php', array(&$this, 'meta_accelerator_admin'));
 	}
 
 	function meta_accelerator_admin() {
@@ -540,6 +569,7 @@ class meta_accelerator {
 	 */
 	function head_js () {
 		if(isset($_REQUEST["page"]) && $_REQUEST["page"] == "meta_accelerator_admin.php") {
+			wp_enqueue_script( "jquery-ui-tabs");
 			wp_enqueue_script( "jquery-ui-dialog");
 			wp_enqueue_script( "meta-accelerator_js", $this->get_plugin_url() . '/js/scripts.js', array("jquery"));
 		}
@@ -623,7 +653,6 @@ class meta_accelerator {
  */
 if(!function_exists("meta_accelerator_log")) {
 	function meta_accelerator_log($msg, $level = "DEBUG") {
-		global $eyeta_deploy_conf;
 		$level_array = array(
 			"DEBUG" => 0,
 			"DETAIL" => 1,
@@ -631,7 +660,7 @@ if(!function_exists("meta_accelerator_log")) {
 			"ERROR" => 3
 		);
 
-		if($level_array["ERROR"] <= $level_array[$level]) {
+		if($level_array["DEBUG"] <= $level_array[$level]) {
 			if(mb_strlen($msg)< 800) {
 				error_log($_SERVER["SERVER_NAME"] . " : " . $level . " : " . $msg);
 			} else {
