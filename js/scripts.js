@@ -1,7 +1,12 @@
 jQuery(document).ready(function () {
 
 	if(jQuery('#tabs').size() != 0) {
-		jQuery('#tabs').tabs();
+		jQuery('#tabs').tabs({
+				activate: function(event, ui) {
+					window.location.hash = ui.newTab.context.hash;
+				}
+			}
+		);
 	}
 
 
@@ -31,7 +36,7 @@ jQuery(document).ready(function () {
 			error: function(xhr, status, err) {
         // append error
 				alert(xhr.responseText);
-				location.href = location.href + "#tabs-2";
+				location.reload(true);
 				}
 		});
 
