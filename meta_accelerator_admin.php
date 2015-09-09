@@ -66,7 +66,7 @@ function meta_accelerator_admin() {
 
 					<br /><br /><a href="#" class="btn_showdetail" target="<?php echo $post_type->name;?>"><?php \_e("detail show/hide");?></a>
 
-					<table class="tbl_detail_<?php echo $post_type->name;?>" style="display: none;">
+					<table class="tbl_detial tbl_detail_<?php echo $post_type->name;?>" style="display: none;" cellspacing="0" cellpadding="0">
 						<tr>
 							<th>meta_key</th>
 							<th>field_key</th>

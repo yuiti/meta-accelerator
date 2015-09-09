@@ -1,0 +1,12 @@
+.tbl_detail {
+    border-collapse: collapse;
+    border: solid 1px #999999;
+}
+.tbl_detial th {
+    background-color: #EEEEEE;
+    border: solid 1px #999999;
+}
+.tbl_detial td {
+    padding: 0.5em 1em 0;
+    border: solid 1px #999999;
+}

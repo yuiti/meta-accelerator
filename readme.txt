@@ -14,9 +14,9 @@ License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
 "Meta Accelerator" can speed up meta query.
 
-1. create other table for meta values
-2. update meta query to use new table
-3. not support multi posttype
+1. create table for meta query
+2. add filter that change meta query to use new table
+3. not support WP_Query has multi posttype
 
 
 == Installation ==
