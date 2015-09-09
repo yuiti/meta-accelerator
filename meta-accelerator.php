@@ -49,6 +49,7 @@ class meta_accelerator {
 	protected $_query_posttype = "";
 
 	public $no_accele = false;
+	public $set_inner = false;
 
 	public function __construct() {
 		// 初期パス等セット
@@ -61,6 +62,11 @@ class meta_accelerator {
 		add_filter( 'get_meta_sql', array(&$this, "get_meta_sql"), 10, 6);
 		add_filter( 'posts_orderby_request', array(&$this, "posts_orderby"), 10, 2);
 		add_filter( 'posts_orderby', array(&$this, "posts_orderby"), 10, 2);
+
+		add_filter( 'posts_groupby_request', array(&$this, "posts_groupby"), 10, 2);
+		add_filter( 'posts_groupby', array(&$this, "posts_groupby"), 10, 2);
+
+
 
 		// 登録時の処理を拡張
 		add_action("updated_post_meta", array(&$this, "updated_post_meta"), 10, 4);
@@ -89,34 +95,28 @@ class meta_accelerator {
 		add_action('wp_ajax_meta_accelerator_add', array(&$this, "add_posttype"));
 		add_action('wp_ajax_meta_accelerator_remove', array(&$this, "remove_posttype"));
 
-		add_action('wp_ajax_mktest', array(&$this, "mktest"));
+		//add_action('wp_ajax_mktest', array(&$this, "mktest"));
 	}
 
 
-	function mktest() {
+	function posts_groupby($groupby, $context) {
+		if($this->no_accele) {
+			return $groupby;
+		}
+		global $wpdb;
+		//meta_accelerator_log("order by : $orderby : $this->_orderkey : $this->_query_posttype");
+		$meta_clauses = $context->meta_query->get_clauses();
+		if(false !== $this->set_inner) {
+			// meta query
+			$obj_posttype = Posttype::get_instance($this->set_inner);
+			$groupby = mb_ereg_replace($wpdb->posts . "\.ID" , $obj_posttype->get_tablename($this->set_inner) . ".post_id", $groupby);
 
-		$recs = 10000;
-
-		$max= 100;
-		for($i=0; $i<$recs; $i++) {
-			$array_post = array(
-				'post_type' => 'post',
-				'post_title' => 'post_' . $i,
-				'post_status' => 'publish',
-					'post_content' => 'content_' . $i
-			);
-			$new_post_id = wp_insert_post($array_post);
-
-
-			for($j=0; $j<$max ; $j++) {
-				update_post_meta($new_post_id, 'metakey_' . $j, 'metaval_' . $j);
-			}
 
 		}
 
-	}
+		return $groupby;
 
-	// remove_posttype($post_type)
+	}
 
 	function remove_posttype() {
 		if(!current_user_can("10")) {
@@ -307,10 +307,10 @@ class meta_accelerator {
 			return $array_join_where;
 		}
 
-		meta_accelerator_log("get_meta_sql");//return $array_join_where;
+		//meta_accelerator_log("get_meta_sql");//return $array_join_where;
 
 		$meta_clauses = $context->meta_query->get_clauses();
-		meta_accelerator_log("get_meta_sql 2 : meta_clauses: " . print_r($meta_clauses, true));
+		//meta_accelerator_log("get_meta_sql 2 : meta_clauses: " . print_r($meta_clauses, true));
 
 		global $wpdb;
 		//  array( compact( 'join', 'where' ), $this->queries, $type, $primary_table, $primary_id_column, $context )
@@ -471,6 +471,7 @@ class meta_accelerator {
 			}
 		}
 		if(array() != $array_inner) {
+			$this->set_inner = $post_type;
 			$array_join[] = "INNER JOIN " . $obj_posttype->get_tablename($post_type) . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
 		}
 		foreach($array_lefts as $clause['alias']) {
