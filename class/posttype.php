@@ -353,7 +353,7 @@ class Posttype {
 			}
 
 			// 対象テーブル作成
-			$sql = "create table `" . Posttype::get_tablename($post_type) . "` (post_id bigint primary key);";
+			$sql = "create table `" . Posttype::get_tablename($post_type) . "` (post_id bigint primary key) CHARACTER SET 'utf8';";
 			//meta_accelerator_log($sql);
 			$wpdb->query($sql);
 
