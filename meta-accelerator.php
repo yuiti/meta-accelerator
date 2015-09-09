@@ -48,6 +48,8 @@ class meta_accelerator {
 	protected $_orderkey = "";
 	protected $_query_posttype = "";
 
+	public $no_accele = false;
+
 	public function __construct() {
 		// 初期パス等セット
 		$this->init();
@@ -86,6 +88,31 @@ class meta_accelerator {
 		// ajax
 		add_action('wp_ajax_meta_accelerator_add', array(&$this, "add_posttype"));
 		add_action('wp_ajax_meta_accelerator_remove', array(&$this, "remove_posttype"));
+
+		add_action('wp_ajax_mktest', array(&$this, "mktest"));
+	}
+
+
+	function mktest() {
+
+		$recs = 10000;
+
+		$max= 100;
+		for($i=0; $i<$recs; $i++) {
+			$array_post = array(
+				'post_type' => 'post',
+				'post_title' => 'post_' . $i,
+				'post_status' => 'publish',
+					'post_content' => 'content_' . $i
+			);
+			$new_post_id = wp_insert_post($array_post);
+
+
+			for($j=0; $j<$max ; $j++) {
+				update_post_meta($new_post_id, 'metakey_' . $j, 'metaval_' . $j);
+			}
+
+		}
 
 	}
 
@@ -235,6 +262,10 @@ class meta_accelerator {
 	 * @param $context
 	 */
 	function posts_orderby( $orderby, $context) {
+
+		if($this->no_accele) {
+			return $orderby;
+		}
 		global $wpdb;
 		//meta_accelerator_log("order by : $orderby : $this->_orderkey : $this->_query_posttype");
 		$meta_clauses = $context->meta_query->get_clauses();
@@ -272,6 +303,10 @@ class meta_accelerator {
 	 * @param $context
 	 */
 	function get_meta_sql($array_join_where, $queries, $type, $primary_table, $primary_id_column, $context) {
+		if($this->no_accele) {
+			return $array_join_where;
+		}
+
 		meta_accelerator_log("get_meta_sql");//return $array_join_where;
 
 		$meta_clauses = $context->meta_query->get_clauses();
@@ -423,7 +458,7 @@ class meta_accelerator {
 			}
 		}
 
-		meta_accelerator_log('left_key' . print_r($array_left_key, true));
+		//meta_accelerator_log('left_key' . print_r($array_left_key, true));
 
 		// joinを追加
 		$array_lefts = array();
@@ -438,8 +473,8 @@ class meta_accelerator {
 		if(array() != $array_inner) {
 			$array_join[] = "INNER JOIN " . $obj_posttype->get_tablename($post_type) . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
 		}
-		foreach($array_lefts as $join_key) {
-			$array_join[] = "LEFT JOIN " . $obj_posttype->get_tablename($post_type) . " as " . $join_key . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
+		foreach($array_lefts as $clause['alias']) {
+			$array_join[] = "LEFT JOIN " . $obj_posttype->get_tablename($post_type) . " as " . $clause['alias'] . " ON ($primary_table.$primary_id_column = " . $obj_posttype->get_tablename($post_type) . ".post_id) ";
 		}
 		//meta_accelerator_log("get_meta_sql : array_inner: " . print_r($array_inner, true));
 
@@ -447,31 +482,41 @@ class meta_accelerator {
 		foreach($array_where as $key => $current_where) {
 			foreach($array_inner as $join_key) {
 				//meta_accelerator_log("get_meta_sql : join_key: $join_key / current_where: $current_where");
-				if(mb_strpos($current_where, $join_key . ".meta_key") !== false) {
-					//meta_accelerator_log("get_meta_sql : $join_key" . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "' AND");
-					$array_where[$key] = mb_ereg_replace($join_key . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "'" , " 1=1 ", $array_where[$key]);
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "' AND") !== false) {
+					//meta_accelerator_log("get_meta_sql : " . $meta_clauses[$join_key]['alias'] . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "' AND");
+					$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "' AND" , "", $current_where);
 					//meta_accelerator_log("get_meta_sql : $array_where[$key]");
 				}
-				if(mb_strpos($current_where, $join_key . ".meta_value") !== false) {
-					$array_where[$key] = mb_ereg_replace($join_key . ".meta_value" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_clauses[$join_key]['key']), $array_where[$key]);
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".meta_key") !== false) {
+					//meta_accelerator_log("get_meta_sql : " . $meta_clauses[$join_key]['alias'] . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "'");
+					$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . ".meta_key = '" . $meta_clauses[$join_key]['key'] . "'" , " 1=1 ", $current_where);
+					//meta_accelerator_log("get_meta_sql : $array_where[$key]");
+				}
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".meta_value") !== false) {
+					$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . ".meta_value" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_clauses[$join_key]['key']), $current_where);
 				}
 			}
 
 			foreach($array_lefts as $join_key) {
-				if(mb_strpos($current_where, $join_key . ".meta_key") !== false) {
-					$array_where[$key] = mb_ereg_replace($join_key . "\.meta_key = '" . $meta_clauses[$join_key]['key'] . "'" , " 1=1 ", $array_where[$key]);
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".meta_key AND") !== false) {
+					$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . "\.meta_key = '" . $meta_clauses[$join_key]['key'] . "' AND" , "", $current_where);
 				}
-				if(mb_strpos($current_where, $join_key . ".meta_value") !== false) {
-					$array_where[$key] = mb_ereg_replace($join_key . "\.meta_value" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_clauses[$join_key]['key']), $array_where[$key]);
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".meta_key") !== false) {
+					$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . "\.meta_key = '" . $meta_clauses[$join_key]['key'] . "'" , " 1=1 ", $current_where);
 				}
-				if(mb_strpos($current_where, $join_key . ".post_id IS NULL") !== false) {
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".meta_value") !== false) {
+					$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . "\.meta_value" , $obj_posttype->get_tablename($post_type) . "." . $obj_posttype->get_col_name($meta_clauses[$join_key]['key']), $current_where);
+				}
+				if(mb_strpos($current_where, $meta_clauses[$join_key]['alias'] . ".post_id IS NULL") !== false) {
 					if( ( $col_name = $obj_posttype->get_col_name($meta_clauses[$join_key]['key'], '', true) ) != '' ) {
-						$array_where[$key] = mb_ereg_replace($join_key . "\.post_id IS NULL" , $obj_posttype->get_tablename($post_type) . "." . $col_name . " IS NULL", $array_where[$key]);
+						$current_where = mb_ereg_replace($meta_clauses[$join_key]['alias'] . "\.post_id IS NULL" , $obj_posttype->get_tablename($post_type) . "." . $col_name . " IS NULL", $current_where);
 					} else {
 						// 列が登録されていないということは全投稿でこのフィールドは空
 					}
 				}
 			}
+
+			$array_where[$key] = $current_where;
 
 		}
 		//meta_accelerator_log("get_meta_sql : array_where: " . print_r($array_where, true));
@@ -660,7 +705,7 @@ if(!function_exists("meta_accelerator_log")) {
 			"ERROR" => 3
 		);
 
-		if($level_array["DEBUG"] <= $level_array[$level]) {
+		if($level_array["ERROR"] <= $level_array[$level]) {
 			if(mb_strlen($msg)< 800) {
 				error_log($_SERVER["SERVER_NAME"] . " : " . $level . " : " . $msg);
 			} else {
